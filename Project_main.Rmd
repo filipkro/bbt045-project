@@ -94,8 +94,22 @@ grep "^[^#;]" blastp_S221 | awk '$11 <= 0.00001 {print$0}' | awk '/MYTED/ {print
 extract only the protein names
 ```{bash}
 grep -oP '(?<=\|)[^\|]+' filtered_blastp_MC5 |awk 'NR % 2 == 1' > onlyprot_MC5
-#do for all files
+
+grep -oP '(?<=\|)[^\|]+' filtered_blastp_MI5 |awk 'NR % 2 == 1' > onlyprot_MI5
+
+grep -oP '(?<=\|)[^\|]+' filtered_blastp_MO1 |awk 'NR % 2 == 1' > onlyprot_MO1
+
+grep -oP '(?<=\|)[^\|]+' filtered_blastp_S323 |awk 'NR % 2 == 1' > onlyprot_S323
 ```
+
+Count the genes that we have found
+```{bash}
+grep -oP '(?<=\|)[^\|]+' blastp_S323 |awk 'NR % 2 == 1' > S323_all_prot
+# do for all files
+
+cat MC5_all_prot MI5_all_prot MO1_all_prot S323_all_prot > all_prot
+```
+
 
 ## GO Annotation
 First I downloaded a GOterms file from here (mytilus edulis taxon id:5660):
