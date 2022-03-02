@@ -138,7 +138,7 @@ A trial with gmap was started, but this also took a lot of time and computing po
 If the gtf file was obtained, the following line was to be run to obtain the counts for each of the choosen samples. 
 
 ```{bash}
-htseq-count -s no -a 10 MO1_alignment.sam <gtf file> > MO1.count
+htseq-count -s no -a 10 <.sam file> <gtf file> > id.count
 ```
 
 
