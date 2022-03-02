@@ -93,6 +93,8 @@ S323_paired <- readDNAStringSet("/home/student6/data-merged/S323_paired.fasta")
 
 
 ```{r}
+library(ORFik)
+
 ORFS_MC5_paired <- findORFs(MC5_paired)
 ORFS_MI5_paired <- findORFs(MI5_paired)
 ORFS_MO1_paired <- findORFs(MO1_paired)
@@ -153,7 +155,17 @@ conda install -c bioconda emboss
 conda activate emboss
 
 transeq ORFS_MC5.fa ORFS_MC5.aa #making the aa files
+```
 
+I now want to test if I get as many ORFs as they do?
+```{bash}
+cd /home/student6/data-merged/gene_predicition
+#counting how many lines start with the entry >
+grep -P "^>" ORFS_MC5.aa | wc -l
+```
+
+
+```{bash}
 #moving all to a new directory
 mkdir gene_predicition
 mv ORFS/*.aa gene_prediction/ #moving all files with ending .aa
@@ -165,17 +177,101 @@ gunzip uniprot_sprot.fasta.gz
 
 makeblastdb -in uniprot_sprot.fasta -dbtype prot -out uniprot_database
 
-#then i run the blast p for each file.. will take a looong time. 
+#then i run the blast p for each file.. 
 blastp -query ORFS_MC5.aa -db uniprot_database -outfmt 7 -out blastp_MC5
-
 ```
 
+now I want to extract all the genes with an e-value less than 0.00001 from the list.
 
-I now want to test if I get as many ORFs as they do?
+The code for mytilus edulis in swiss prot is MYTED
+1. extract all proteins with e-value less than 0.00001 (since this was the cutoff in the original study)
+2. take out all proteins that are from Mytilus edulis species.
+
 ```{bash}
+grep "^[^#;]" blastp_MC5 | awk '$11 <= 0.00001 {print$0}' | awk '/MYTED/ {print}' > filtered_blastp_MC5
 
+grep "^[^#;]" blastp_MO1 | awk '$11 <= 0.00001 {print$0}' | awk '/MYTED/ {print}' > filtered_blastp_MO1
+
+grep "^[^#;]" blastp_MI5 | awk '$11 <= 0.00001 {print$0}' | awk '/MYTED/ {print}' > filtered_blastp_MI5
+
+grep "^[^#;]" blastp_S323 | awk '$11 <= 0.00001 {print$0}' | awk '/MYTED/ {print}' > filtered_blastp_S323
+
+grep "^[^#;]" blastp_S221 | awk '$11 <= 0.00001 {print$0}' | awk '/MYTED/ {print}' > filtered_blastp_S221
 ```
 
+extract only the protein names
+```{bash}
+grep -oP '(?<=\|)[^\|]+' filtered_blastp_MC5 |awk 'NR % 2 == 1' > onlyprot_MC5
+```
+
+
+
+
+## GO Annotation
+First I downloaded a GOterms file from here (mytilus edulis taxon id:5660):
+https://www.ebi.ac.uk/QuickGO/annotations?taxonId=6550&taxonUsage=descendants
+Where we find almost 6000 annotations for Mytilus edulis. The dataset were the loaded into R (QuickGO)
+```{r}
+if (!require("BiocManager", quietly = TRUE))
+    install.packages("BiocManager")
+
+BiocManager::install("GO.db")
+library(GO.db)
+
+GOdb <- as.data.frame(GOTERM)
+QuickGO <- read.csv("/home/student6/data-merged/gene_prediction/QuickGO-annotations-1646135112992-20220301.tsv", sep = "\t")
+
+```
+```{bash}
+minimap2 -ax sr bwa/MC1.Trinity.fasta MI5_1.fastq MI5_2.fastq > MI5_alignment.sam
+samtools view -b MO1_alignment.sam > MO1_alignment.bam
+samtools sort MO1_alignment.bam > MO1_alignment_sorted.bam
+samtools index MO1_alignment_sorted.bam
+```
+
+```{r}
+library(Rsamtools)
+MO1 <- scanBam("/home/student6/data/MO1_alignment_sorted.bam")
+```
+
+
+
+
+````{r}
+if (!require("BiocManager", quietly = TRUE))
+    install.packages("BiocManager")
+
+BiocManager::install("AnnotationHub")
+
+library()
+```
+
+## Perform the GOterm enrichment
+testing testing 
+
+```{r}
+if (!require("BiocManager", quietly = TRUE))
+    install.packages("BiocManager")
+
+BiocManager::install("clusterProfiler")
+
+library(clusterProfiler)
+```
+
+```{r}
+bitr(P80249, MYTED, )
+```
+
+
+
+## Use the assembled genome and map the sequences to the reference transcriptome.
+```{r}
+if (!require("BiocManager", quietly = TRUE))
+    install.packages("BiocManager")
+
+BiocManager::install("Rbowtie2")
+```
+https://bioconductor.org/packages/release/bioc/manuals/Rbowtie2/man/Rbowtie2.pdf
 
 
 

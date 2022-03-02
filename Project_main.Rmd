@@ -7,22 +7,140 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-## R Markdown
+## Downloading the fastq files
 
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+## Quality control
 
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+## De novo assmbly using Trinity
 
-```{r cars}
-summary(cars)
+
+Since thins are taking longer than expected and desired, we choose 5 samples (4 + one control) to do the analysis on.
+
+
+## Pairing the files (paired end reads)
+
+## Finding ORFs
+**Troubles before reaching this code**
+Tried several packages: ORFik, ShortReads to load the strings into R and use ORFik::findORFs to find the ORFs. However this returned an IRanges object which works in complicated way (object oriented) so I could not extract the way I wanted with GenomicFeatures::extractTranscriptSeqs.
+
+At last we found orfipy that could do what we wanted.
+
+Want to convert the paired files from fastq to simple fasta.
+```{bash}
+conda activate filter #here I have the fastx_toolbox
+cd home/student6/data-merged/
+#ex:
+fastq_to_fasta -i MC5_paired.fastq -o MC5_paired.fasta
+# do with all files. 
 ```
 
-## Including Plots
-
-You can also embed plots, for example:
-
-```{r pressure, echo=FALSE}
-plot(pressure)
+The lengths of the unigenes they found in the paper were between 201 and 30590, so we use the same number and see if we get a similar result with a different method. 
+```{bash}
+# conda create -n orfipy 
+# conda activate orfipy
+# conda install -c bioconda orfipy
+orfipy MO1_paired.fasta --dna ORFS_MO1.fa --min 201 --max 30590
+# since we had to do this step in another way, we set the min and max values of
+#the ORFs to the values that they found 
+#then I put all the ORF_id.fa files in ORFS directory
 ```
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+Now I want to translate the DNA ORFs into amino acid orfs --> installing emboss so I can use transeq
+```{bash}
+conda create -n emboss
+conda install -c bioconda emboss
+conda activate emboss
+
+transeq ORFS_MC5.fa ORFS_MC5.aa #making the aa files
+#do same for all files
+```
+
+## Blast search for proteins 
+
+```{bash}
+#moving all to a new directory
+mkdir gene_predicition
+mv ORFS/*.aa gene_prediction/ #moving all files with ending .aa
+
+#in the gene_prediction directory
+conda activate gene_prediction
+wget https://ftp.uniprot.org/pub/databases/uniprot/current_release/knowledgebase/complete/uniprot_sprot.fasta.gz
+gunzip uniprot_sprot.fasta.gz
+
+makeblastdb -in uniprot_sprot.fasta -dbtype prot -out uniprot_database
+
+#then i run the blast p for each file.. 
+blastp -query ORFS_MC5.aa -db uniprot_database -outfmt 7 -out blastp_MC5
+```
+
+For the SwissProt db they used a cutoff of e^-5 for the e-values --> want to extract all the genes with an e-value less than 0.00001 from the list.
+
+The code for mytilus edulis in swiss prot is MYTED
+1. extract all proteins with e-value less than 0.00001 (since this was the cutoff in the original study)
+2. take out all proteins that are from Mytilus edulis species.
+
+```{bash}
+grep "^[^#;]" blastp_MC5 | awk '$11 <= 0.00001 {print$0}' | awk '/MYTED/ {print}' > filtered_blastp_MC5
+
+grep "^[^#;]" blastp_MO1 | awk '$11 <= 0.00001 {print$0}' | awk '/MYTED/ {print}' > filtered_blastp_MO1
+
+grep "^[^#;]" blastp_MI5 | awk '$11 <= 0.00001 {print$0}' | awk '/MYTED/ {print}' > filtered_blastp_MI5
+
+grep "^[^#;]" blastp_S323 | awk '$11 <= 0.00001 {print$0}' | awk '/MYTED/ {print}' > filtered_blastp_S323
+
+grep "^[^#;]" blastp_S221 | awk '$11 <= 0.00001 {print$0}' | awk '/MYTED/ {print}' > filtered_blastp_S221
+```
+
+extract only the protein names
+```{bash}
+grep -oP '(?<=\|)[^\|]+' filtered_blastp_MC5 |awk 'NR % 2 == 1' > onlyprot_MC5
+#do for all files
+```
+
+## GO Annotation
+First I downloaded a GOterms file from here (mytilus edulis taxon id:5660):
+https://www.ebi.ac.uk/QuickGO/annotations?taxonId=6550&taxonUsage=descendants
+Where we find almost 6000 annotations for Mytilus edulis. The dataset were the loaded into R (QuickGO)
+```{r}
+if (!require("BiocManager", quietly = TRUE))
+    install.packages("BiocManager")
+
+BiocManager::install("GO.db")
+library(GO.db)
+
+GOdb <- as.data.frame(GOTERM)
+QuickGO <- read.csv("/home/student6/data-merged/gene_prediction/QuickGO-annotations-1646135112992-20220301.tsv", sep = "\t")
+
+```
+At this point, we realized that we do not know which genes are differentially expressed between the samples so it was impossible to do an GO enrichment. We needed to resatart do an alignment.
+
+## Alignment of reads to assembled transcriptome
+Since time is not on our side we use minimap2 (since it's supposed to be fast) to align the samples to the assembled transcriptome (obtained from one of the control animals). We get .sam files that we convert to .bam files. These are then sorted for faster loading. Also did an indexing to be able to look at the alignments in Integrative Genome Viewer.
+
+```{bash}
+#conda activate minimap2
+minimap2 -ax sr bwa/MC1.Trinity.fasta MI5_1.fastq MI5_2.fastq > MI5_alignment.sam
+samtools view -b MO1_alignment.sam > MO1_alignment.bam
+samtools sort MO1_alignment.bam > MO1_alignment_sorted.bam
+samtools index MO1_alignment_sorted.bam
+```
+
+## Converting the .sam files to counts
+To be able to compare the expression between the samples, we now wanted to convert the aligned fasta files into counts per gene. However to do this a .gff or .gtf file is needed. (gives position of each gene in the genome) Since we did a de novo assembly, this file had to be made by us. 
+
+There were also no exisitng files in Ensembl or RefSeq (NCBI) so to redo the aligmnent with a genome was also not an option. 
+
+**Complications**
+Possible programs to use were TransDecoder, gmap.
+
+A trial with gmap was started, but this also took a lot of time and computing power from the server.
+
+If the gtf file was obtained, the following line was to be run to obtain the counts for each of the choosen samples. 
+
+```{bash}
+htseq-count -s no -a 10 MO1_alignment.sam <gtf file> > MO1.count
+```
+
+
+
+
