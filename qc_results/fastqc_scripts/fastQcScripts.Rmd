@@ -1,0 +1,29 @@
+---
+title: "fastQC scripts"
+output: html_document
+---
+
+
+## R Markdown
+
+```{bash}
+# install fastqc using conda
+conda install -c bioconda fastqc
+
+# performing fastqc for all fastq files
+fastqc -o /home/student5/results/fastqc_report /home/student6/data/*.fastq
+
+# install multiqc using conda
+conda install -c bioconda -c conda-forge multiqc
+
+# performing multiqc
+multiqc .
+open multiqc_report.html 
+# or open multiqc.html file in browser
+scp student5@13.48.179.168:/home/student5/results/fastqc_report/multiqc_report.html ./Desktop
+
+
+# performing fastqc for MC2_1.fastq (for comparing the result from one of the fastq files with Supplementary Table S1)
+fastqc /home/student5/Documents/MC2_1.fastq
+# open html file in browser
+scp student5@13.48.179.168:/home/student5/Documents/MC2_1_fastqc.html ./Desktop
