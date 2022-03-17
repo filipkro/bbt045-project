@@ -9,4 +9,269 @@ knitr::opts_chunk$set(echo = TRUE)
 
 ## Can we do BLAST and annotation in R?
 
+```{r
+readFastq("MC2_1.fq")
+```
+
+
+## Find the coding ORFs of samples
+Installing the ORFik package to find the ORFs of the coding regions to be able
+to find proteins and annotate these.
+
+```{r}
+if (!require("BiocManager", quietly = TRUE))
+    install.packages("BiocManager")
+
+BiocManager::install("ORFik")
+```
+
+Want to install the ShortRead package.. But it does not seem to work...
+```{r
+if (!require("BiocManager", quietly = TRUE))
+    install.packages("BiocManager")
+
+BiocManager::install("ShortRead")
+```
+
+
+```{bash}
+R CMD INSTALL ShortRead_1.52.0.tar.gz
+```
+I also tried to install the library (BiocManager) on the path /home/student9/R/x86_64-pc-linux-gnu-library/4.1 so that i could maybe install 
+the ShortString package, but to no use...
+
+testing testing...
+```{r}
+source("http://www.bioconductor.org/biocLite.R")
+biocLite(c("ShortRead"))
+```
+
+```{r}
+install.packages(ShortReads)
+```
+
+## Finding the ORFs
+
+Sandra installed it for all of us, wohoo!
+
+```{r}
+library(ORFik)
+library(ShortRead)
+library(GenomicFeatures)
+library(stringr)
+
+#?findORFs
+```
+
+
+```{r
+MC2_1 <- readFastq("test/MC2_1.fastq")
+```
+Remade the paired fastq files into fasta files to be able to read them in R (and also find the ORFs)
+```{bash}
+conda activate filter #here I have the fastx_toolbox
+cd home/student6/data-merged/
+#ex:
+fastq_to_fasta -i MC5_paired.fastq -o MC5_paired.fasta
+# do with all files. 
+```
+
+Genome
+```{r}
+reference_medulis <- readDNAStringSet("/home/student6/data/GCA_019925275.1_PEIMed_genomic.fna")
+```
+
+
+Samples
+```{r}
+MC5_paired <- readDNAStringSet("/home/student6/data-merged/MC5_paired.fasta")
+MI5_paired <- readDNAStringSet("/home/student6/data-merged/MI5_paired.fasta")
+MO1_paired <- readDNAStringSet("/home/student6/data-merged/MO1_paired.fasta")
+S221_paired <- readDNAStringSet("/home/student6/data-merged/S221_paired.fasta")
+S323_paired <- readDNAStringSet("/home/student6/data-merged/S323_paired.fasta") 
+```
+
+
+```{r}
+library(ORFik)
+
+ORFS_MC5_paired <- findORFs(MC5_paired)
+ORFS_MI5_paired <- findORFs(MI5_paired)
+ORFS_MO1_paired <- findORFs(MO1_paired)
+ORFS_S221_paired <- findORFs(S221_paired)
+ORFS_S323_paired <- findORFs(S323_paired)
+```
+
+Finding the transcripts
+
+```{r}
+ORFseq_MC5_paired <- extractTranscriptSeqs(MC5_paired, ORFS_MC5_paired)
+```
+
+testingtesting
+```{r}
+test <- rbind(c(1,5,5), c(2,8,5), c(3,7,4))
+testseq <- c("ABCDEFGHIJKLMN")
+
+i=1
+for(i in 1:3){
+  a <- test[i,]
+ print(str_sub(testseq,a[1],a[2]))
+}
+
+
+```
+
+Need to make the fuincking IRange object into a vector.......
+```{r}
+start_MC5 <- start(ORFS_MC5_paired)
+end_MC5 <- end(ORFS_MC5_paired)
+range_MC5 <- cbind(start_MC5, end_MC5)
+
+blopp <- as.matrix(ORFS_MC5_paired)
+```
+
+
+```{r}
+for (i in 1:length(range_MC5)) {
+  b <- range_MC5[i,]
+  ORFseq_MC5_paired <- str_sub(MC5_paired, b[1], b[2])
+}
+```
+**I think she got it! By George she's got it!**
+```{bash}
+# conda create -n orfipy -c bioconda orfipy
+# conda activate orfipy
+orfipy MO1_paired.fasta --dna ORFS_MO1.fa --min 201 --max 30590
+# since we had to do this step in another way, we set the min and max values of
+#the ORFs to the values that they found 
+#then I put all the ORF_id.fa files in ORFS directory
+```
+
+Now I want to translate the DNA ORFs into amino acid orfs --> installing emboss so I can use transeq
+```{bash}
+conda create -n emboss
+conda install -c bioconda emboss
+conda activate emboss
+
+transeq ORFS_MC5.fa ORFS_MC5.aa #making the aa files
+```
+
+I now want to test if I get as many ORFs as they do?
+```{bash}
+cd /home/student6/data-merged/gene_predicition
+#counting how many lines start with the entry >
+grep -P "^>" ORFS_MC5.aa | wc -l
+```
+
+
+```{bash}
+#moving all to a new directory
+mkdir gene_predicition
+mv ORFS/*.aa gene_prediction/ #moving all files with ending .aa
+
+#in the gene_prediction directory
+conda activate gene_prediction
+wget https://ftp.uniprot.org/pub/databases/uniprot/current_release/knowledgebase/complete/uniprot_sprot.fasta.gz
+gunzip uniprot_sprot.fasta.gz
+
+makeblastdb -in uniprot_sprot.fasta -dbtype prot -out uniprot_database
+
+#then i run the blast p for each file.. 
+blastp -query ORFS_MC5.aa -db uniprot_database -outfmt 7 -out blastp_MC5
+```
+
+now I want to extract all the genes with an e-value less than 0.00001 from the list.
+
+The code for mytilus edulis in swiss prot is MYTED
+1. extract all proteins with e-value less than 0.00001 (since this was the cutoff in the original study)
+2. take out all proteins that are from Mytilus edulis species.
+
+```{bash}
+grep "^[^#;]" blastp_MC5 | awk '$11 <= 0.00001 {print$0}' | awk '/MYTED/ {print}' > filtered_blastp_MC5
+
+grep "^[^#;]" blastp_MO1 | awk '$11 <= 0.00001 {print$0}' | awk '/MYTED/ {print}' > filtered_blastp_MO1
+
+grep "^[^#;]" blastp_MI5 | awk '$11 <= 0.00001 {print$0}' | awk '/MYTED/ {print}' > filtered_blastp_MI5
+
+grep "^[^#;]" blastp_S323 | awk '$11 <= 0.00001 {print$0}' | awk '/MYTED/ {print}' > filtered_blastp_S323
+
+grep "^[^#;]" blastp_S221 | awk '$11 <= 0.00001 {print$0}' | awk '/MYTED/ {print}' > filtered_blastp_S221
+```
+
+extract only the protein names
+```{bash}
+grep -oP '(?<=\|)[^\|]+' filtered_blastp_MC5 |awk 'NR % 2 == 1' > onlyprot_MC5
+```
+
+
+
+
+## GO Annotation
+First I downloaded a GOterms file from here (mytilus edulis taxon id:5660):
+https://www.ebi.ac.uk/QuickGO/annotations?taxonId=6550&taxonUsage=descendants
+Where we find almost 6000 annotations for Mytilus edulis. The dataset were the loaded into R (QuickGO)
+```{r}
+if (!require("BiocManager", quietly = TRUE))
+    install.packages("BiocManager")
+
+BiocManager::install("GO.db")
+library(GO.db)
+
+GOdb <- as.data.frame(GOTERM)
+QuickGO <- read.csv("/home/student6/data-merged/gene_prediction/QuickGO-annotations-1646135112992-20220301.tsv", sep = "\t")
+
+```
+```{bash}
+minimap2 -ax sr bwa/MC1.Trinity.fasta MI5_1.fastq MI5_2.fastq > MI5_alignment.sam
+samtools view -b MO1_alignment.sam > MO1_alignment.bam
+samtools sort MO1_alignment.bam > MO1_alignment_sorted.bam
+samtools index MO1_alignment_sorted.bam
+```
+
+```{r}
+library(Rsamtools)
+MO1 <- scanBam("/home/student6/data/MO1_alignment_sorted.bam")
+```
+
+
+
+
+````{r}
+if (!require("BiocManager", quietly = TRUE))
+    install.packages("BiocManager")
+
+BiocManager::install("AnnotationHub")
+
+library()
+```
+
+## Perform the GOterm enrichment
+testing testing 
+
+```{r}
+if (!require("BiocManager", quietly = TRUE))
+    install.packages("BiocManager")
+
+BiocManager::install("clusterProfiler")
+
+library(clusterProfiler)
+```
+
+```{r}
+bitr(P80249, MYTED, )
+```
+
+
+
+## Use the assembled genome and map the sequences to the reference transcriptome.
+```{r}
+if (!require("BiocManager", quietly = TRUE))
+    install.packages("BiocManager")
+
+BiocManager::install("Rbowtie2")
+```
+https://bioconductor.org/packages/release/bioc/manuals/Rbowtie2/man/Rbowtie2.pdf
+
+
 
