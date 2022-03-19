@@ -3,38 +3,40 @@ title: "Project_main"
 output: html_document
 ---
 
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+## Introduction
+Recent decades have seen a rapid increase in global warming and the Arctic is no exception. In response to the warming of the Arctic, marine boreal species are expanding into the Arctic at a pace that reflects environmental warming. Hence, several marine species have overspread the Arctic, and the establishment of these species has resulted in changes in regimes, assemblage compositions, and food web structures. However, the range expansion of boreal marine species is constrained by the ability of these species to tolerate low water temperatures and subzero air temperatures during winter from intertidal species. The temperature rises above the normal range are beyond the thermoregulatory capacity of many boreal intertidal species, such as the highly abundant blue mussel Mytilus edulis, which cannot survive at 32 °C despite repeated exposures to air.
+
+Physicochemical and ecological conditions modify the body temperature of intertidal organisms during low tide, making it difficult to predict heat stress in these organisms. Therefore, remotely sensed atmospheric air temperatures cannot capture physiological conditions at the microhabitat level. For a deeper understanding of the role of thermal stress on natural populations, field-based physiological and molecular evaluations are required. Laboratory studies on thermal stress are prone to overestimating the actual impact of global warming on the physiology of intertidal organisms. In the current study, in order to increase knowledge regarding intertidal heat stress in the Arctic, a series of experiments has been conducted to identify if current Arctic summer temperatures induce any in situ cellular stress responses in Greenland Mytilus edulis. At the first step, across a natural temperature gradient, samples from the first warm days of the year were compared with those taken at similarly manipulated temperatures. Accordingly, Mytilus edulis were collected from the inner (warmer) and outer (cooler) regions of the Godthåbsfjorden around Nuuk (64°N)  in order to study the effect of the fjord temperature gradient. Then, collected samples were exposed to two acute temperature shocks: 22°C and 32°C, which represent common and extreme summer air temperatures for intertidal habitats in Nuuk.
+
+## Materials and methods
+All software and packages used were managed under environment control with conda.  
+
+The files were downloaded from https://www.ebi.ac.uk/ and where insufficient links were provided, a script was created to obtain them, see Supplementary information. Quality control was done for all 48 (24 paired end reads) samples with fastqc. A multiQC was made to obtain a single HTML file for all samples. De novo transcriptome assembly was conducted using Trinity version ..., for 2 transcriptomes. However, due to extensive time consumption running the Trinity assembly, all samples could not be processed. 
+
+The assembled transcriptome for the control animal was used as reference five 4 samples, one from each condition was choosen to be mapped into the transcriptome. Minimap2 was to align the samples to the assembled transcriptome. The sam-files were converted to bam-files using samtools to be sorted and loaded faster. An indexing was also done to be able to look at the alignments in Integrative Genome Viewer.
+
+```{bash}
+#conda activate minimap2
+minimap2 -ax sr bwa/MC1.Trinity.fasta MI5_1.fastq MI5_2.fastq > MI5_alignment.sam
+samtools view -b MO1_alignment.sam > MO1_alignment.bam
+samtools sort MO1_alignment.bam > MO1_alignment_sorted.bam
+samtools index MO1_alignment_sorted.bam
 ```
 
-## Downloading the fastq files
+The sam-file was now to be converted into counts, but due to lack of a GFF-file and lack of time to create one from the assembly this was not feasible. 
 
-## Quality control
+Since the transcriptomes could not be used the way desired, the same four samples was again choosen to do the possible downstream analysis on. The paired end read files were merged to single files using ... The files were then converted from fastq to fasta files using the fastx toolbox.
 
-## De novo assmbly using Trinity
-
-
-Since thins are taking longer than expected and desired, we choose 5 samples (4 + one control) to do the analysis on.
-
-
-## Pairing the files (paired end reads)
-
-## Finding ORFs
-**Troubles before reaching this code**
-Tried several packages: ORFik, ShortReads to load the strings into R and use ORFik::findORFs to find the ORFs. However this returned an IRanges object which works in complicated way (object oriented) so I could not extract the way I wanted with GenomicFeatures::extractTranscriptSeqs.
-
-At last we found orfipy that could do what we wanted.
-
-Want to convert the paired files from fastq to simple fasta.
 ```{bash}
 conda activate filter #here I have the fastx_toolbox
 cd home/student6/data-merged/
 #ex:
 fastq_to_fasta -i MC5_paired.fastq -o MC5_paired.fasta
-# do with all files. 
+
 ```
 
-The lengths of the unigenes they found in the paper were between 201 and 30590, so we use the same number and see if we get a similar result with a different method. 
+Orfipy was then used to find the coding ORFs of the samples setting gene lengths between 201 and 30590 in an attempt to reproduce the findings of unigenes from original paper, using another method. 
+
 ```{bash}
 # conda create -n orfipy 
 # conda activate orfipy
@@ -45,17 +47,17 @@ orfipy MO1_paired.fasta --dna ORFS_MO1.fa --min 201 --max 30590
 #then I put all the ORF_id.fa files in ORFS directory
 ```
 
-Now I want to translate the DNA ORFs into amino acid orfs --> installing emboss so I can use transeq
+The found ORFs were transcribed from DNA into amino acid sequence using transeq in the emboss package.
 ```{bash}
 conda create -n emboss
 conda install -c bioconda emboss
 conda activate emboss
 
 transeq ORFS_MC5.fa ORFS_MC5.aa #making the aa files
-#do same for all files
+
 ```
 
-## Blast search for proteins 
+A BLASTP search was done against SwissProt darabase.
 
 ```{bash}
 #moving all to a new directory
@@ -73,13 +75,20 @@ makeblastdb -in uniprot_sprot.fasta -dbtype prot -out uniprot_database
 blastp -query ORFS_MC5.aa -db uniprot_database -outfmt 7 -out blastp_MC5
 ```
 
-For the SwissProt db they used a cutoff of e^-5 for the e-values --> want to extract all the genes with an e-value less than 0.00001 from the list.
+The genes found in all samples were then counted.
+```{bash}
+grep -oP '(?<=\|)[^\|]+' blastp_S323 |awk 'NR % 2 == 1' > S323_all_prot
+# awk 'NR % 2 == 1' prints all uneven lines  
+#do for all files
 
-The code for mytilus edulis in swiss prot is MYTED
-1. extract all proteins with e-value less than 0.00001 (since this was the cutoff in the original study)
-2. take out all proteins that are from Mytilus edulis species.
+cat MC5_all_prot MI5_all_prot MO1_all_prot S323_all_prot > all_prot
+sort -u all_prot | wc -l # --> 290122 genes
+```
+
+The files were then filtered using a cutoff for the e-value of 0.00001, only the genes annotated to Mytilus edulis species were choosen and the gene count for each sample was counted.
 
 ```{bash}
+# e-value cutoff set to e^-5 and code for species = MYTED 
 grep "^[^#;]" blastp_MC5 | awk '$11 <= 0.00001 {print$0}' | awk '/MYTED/ {print}' > filtered_blastp_MC5
 
 grep "^[^#;]" blastp_MO1 | awk '$11 <= 0.00001 {print$0}' | awk '/MYTED/ {print}' > filtered_blastp_MO1
@@ -91,70 +100,32 @@ grep "^[^#;]" blastp_S323 | awk '$11 <= 0.00001 {print$0}' | awk '/MYTED/ {print
 grep "^[^#;]" blastp_S221 | awk '$11 <= 0.00001 {print$0}' | awk '/MYTED/ {print}' > filtered_blastp_S221
 ```
 
-extract only the protein names
 ```{bash}
+#protein names extraction
 grep -oP '(?<=\|)[^\|]+' filtered_blastp_MC5 |awk 'NR % 2 == 1' > onlyprot_MC5
+wc -l onlyprot_MC5 # --> 5771
 
 grep -oP '(?<=\|)[^\|]+' filtered_blastp_MI5 |awk 'NR % 2 == 1' > onlyprot_MI5
+wc -l onlyprot_MI5 # --> 13209
 
 grep -oP '(?<=\|)[^\|]+' filtered_blastp_MO1 |awk 'NR % 2 == 1' > onlyprot_MO1
+wc -l onlyprot_MO1 # --> 1562
 
 grep -oP '(?<=\|)[^\|]+' filtered_blastp_S323 |awk 'NR % 2 == 1' > onlyprot_S323
-```
-
-Count the genes that we have found
-```{bash}
-grep -oP '(?<=\|)[^\|]+' blastp_S323 |awk 'NR % 2 == 1' > S323_all_prot
-# do for all files
-
-cat MC5_all_prot MI5_all_prot MO1_all_prot S323_all_prot > all_prot
+wc -l onlyprot_S323 # --> 3386
 ```
 
 
-## GO Annotation
-First I downloaded a GOterms file from here (mytilus edulis taxon id:5660):
-https://www.ebi.ac.uk/QuickGO/annotations?taxonId=6550&taxonUsage=descendants
-Where we find almost 6000 annotations for Mytilus edulis. The dataset were the loaded into R (QuickGO)
-```{r}
-if (!require("BiocManager", quietly = TRUE))
-    install.packages("BiocManager")
+## Results and discussion
+Quality control of each sample showed that the quality of the samples were very high with phred scores of over 25 for all samples. Thus, an assumption that the samples were already filtered and the analysis was proceeded without any further edits of the files. 
 
-BiocManager::install("GO.db")
-library(GO.db)
+A crucial complication with the reproduction of this study was the large amount of time an computational power required for the assembly of the transcriptomes. Since this step could not be done to satisfaction, all downstream analysis was obstructed. 
 
-GOdb <- as.data.frame(GOTERM)
-QuickGO <- read.csv("/home/student6/data-merged/gene_prediction/QuickGO-annotations-1646135112992-20220301.tsv", sep = "\t")
+The transcriptome obtained form Trinity that was used as a reference, did not have a respective GFF/annotation file. With further reasearch on how to obtain one from Trinity as well as with more time, this step could possibly have been solved. However, within the given time frame this was not feasible for our level of knowledge. Also, it was realised too late in the procedure that we needed a GFF/annotation file to convert the sam-file into counts and thus, the desired DE gene analysis and GO-term enrichment analysis could not be done. Since there were also no exisitng files in Ensembl or RefSeq (NCBI), therefore, to redo the aligmnent with a genome was also not an option
 
-```
-At this point, we realized that we do not know which genes are differentially expressed between the samples so it was impossible to do an GO enrichment. We needed to resatart do an alignment.
+Furhter, since all bioanalytical analyses was made by a company, the details about the analysis done was documented only to a small extent. Therefore, a large amount of packages were tested before reaching the code that gave the results.
 
-## Alignment of reads to assembled transcriptome
-Since time is not on our side we use minimap2 (since it's supposed to be fast) to align the samples to the assembled transcriptome (obtained from one of the control animals). We get .sam files that we convert to .bam files. These are then sorted for faster loading. Also did an indexing to be able to look at the alignments in Integrative Genome Viewer.
+In the original study 402,060 unigenes were found and our, somewhat improvised, corresponding number was calculated to 290122. This number was obtained from the blast search with all genes in the whole SwissProt database containing a large amount of different species. This number is therefore not realistic, since the blue mussel most likely not expresses genes from other species. Further, the 402 060 unigenes the original paper claim to have found is also not a realistic number. Given that the human genome consists of approximately 25,000 to 30,000 genes, it is highly unlikely that the blue mussel has over 400,000 genes.
 
-```{bash}
-#conda activate minimap2
-minimap2 -ax sr bwa/MC1.Trinity.fasta MI5_1.fastq MI5_2.fastq > MI5_alignment.sam
-samtools view -b MO1_alignment.sam > MO1_alignment.bam
-samtools sort MO1_alignment.bam > MO1_alignment_sorted.bam
-samtools index MO1_alignment_sorted.bam
-```
-
-## Converting the .sam files to counts
-To be able to compare the expression between the samples, we now wanted to convert the aligned fasta files into counts per gene. However to do this a .gff or .gtf file is needed. (gives position of each gene in the genome) Since we did a de novo assembly, this file had to be made by us. 
-
-There were also no exisitng files in Ensembl or RefSeq (NCBI) so to redo the aligmnent with a genome was also not an option. 
-
-**Complications**
-Possible programs to use were TransDecoder, gmap.
-
-A trial with gmap was started, but this also took a lot of time and computing power from the server.
-
-If the gtf file was obtained, the following line was to be run to obtain the counts for each of the choosen samples. 
-
-```{bash}
-htseq-count -s no -a 10 <.sam file> <gtf file> > id.count
-```
-
-
-
+The blast search was also filtered to obtain only the genes with sufficient e-value and also only the genes coupled to Mytilus edulis species. The number of genes obtained for each sample can be found in Supplementary information. We observe a great variance between the samples, and ... is likely because this sample had more reads and therefore more possible hits and no conclusions can be drawn from these single samples from each condition. The number of genes of 2000-13000 genes, seems like a more reasonable number of genes compared to the 400,000 unigenes found in the original article.
 
