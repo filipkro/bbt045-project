@@ -1,4 +1,5 @@
-for file in /home/student6/data/*
+path=$1
+for file in $path"/*"
 do
   gunzip "$file"
 done
