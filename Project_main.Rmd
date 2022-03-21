@@ -48,7 +48,9 @@ Since the transcriptomes could not be used the way desired, the same four sample
 
 ```{bash}
 singularity build micca.simg docker://compmetagen/micca:1.7.2
-nohup singularity exec micca.simg micca mergepairs -i [`pwd`/data/MC5_1.fastq `pwd`/data/MC5_2.fastq] -o `pwd`/data-merged/MC5_paired.fastq > nohup-micca.out &
+nohup singularity exec micca.simg micca mergepairs -i \
+          [`pwd`/data/MC5_1.fastq `pwd`/data/MC5_2.fastq] \
+          -o `pwd`/data-merged/MC5_paired.fastq > nohup-micca.out &
 ```
 
 Where MC5_1.fastq and MC5_2.fastq are the pair end reads for one sample. The merged files were then converted from fastq to fasta files using the fastx toolbox.
