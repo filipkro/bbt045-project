@@ -15,7 +15,27 @@ Physicochemical and ecological conditions modify the body temperature of interti
 
 All software and packages used were managed under environment control with conda.
 
-The files were downloaded from <https://www.ebi.ac.uk/> and where insufficient links were provided, a script (scripts/scp_ftps.sh in the Github repo) was created to obtain them, see Supplementary information for more instructions on this. Quality control was done for all 48 (24 paired end reads) samples with fastqc. A multiQC was made to obtain a single HTML file for all samples. De novo transcriptome assembly was conducted using Trinity version 2.13.1. For Trinity to work properly the data files needed to be unziped which was done by running the script in scripts/unzip-files.sh as follows:
+The files were downloaded from <https://www.ebi.ac.uk/> and where insufficient links were provided, a script (scripts/scp_ftps.sh in the Github repo) was created to obtain them, see Supplementary information for more instructions on this. Quality control was done for all 48 (24 paired end reads) samples with fastqc. A multiQC was made to obtain a single HTML file for all samples.
+
+```{bash}
+# install fastqc using conda
+conda install -c bioconda fastqc
+# performing fastqc for all fastq files
+fastqc -o /home/student5/results/fastqc_report /home/student6/data/*.fastq
+# install multiqc using conda
+conda install -c bioconda -c conda-forge multiqc
+# performing multiqc
+multiqc .
+open multiqc_report.html
+# or open multiqc.html file in browser
+scp student5@13.48.179.168:/home/student5/results/fastqc_report/multiqc_report.html ./Desktop
+# performing fastqc for MC2_1.fastq (for comparing the result from one of the fastq files with Supplementary Table S1)
+fastqc /home/student5/Documents/MC2_1.fastq
+# open html file in browser
+scp student5@13.48.179.168:/home/student5/Documents/MC2_1_fastqc.html ./Desktop
+```
+
+De novo transcriptome assembly was conducted using Trinity version 2.13.1. For Trinity to work properly the data files needed to be unziped which was done by running the script in scripts/unzip-files.sh as follows:
 
 ```{bash}
 ./unzip-files.sh <PATH-TO-FOLDER-WITH-FILES>
@@ -60,18 +80,17 @@ conda activate filter #here I have the fastx_toolbox
 cd home/student6/data-merged/
 #ex:
 fastq_to_fasta -i MC5_paired.fastq -o MC5_paired.fasta
-
 ```
 
 Orfipy was then used to find the coding ORFs of the samples setting gene lengths between 201 and 30590 in an attempt to reproduce the findings of unigenes from original paper, using another method.
 
 ```{bash}
-# conda create -n orfipy 
+# conda create -n orfipy
 # conda activate orfipy
 # conda install -c bioconda orfipy
 orfipy MO1_paired.fasta --dna ORFS_MO1.fa --min 201 --max 30590
 # since we had to do this step in another way, we set the min and max values of
-#the ORFs to the values that they found 
+#the ORFs to the values that they found
 #then I put all the ORF_id.fa files in ORFS directory
 ```
 
@@ -81,9 +100,7 @@ The found ORFs were transcribed from DNA into amino acid sequence using transeq 
 conda create -n emboss
 conda install -c bioconda emboss
 conda activate emboss
-
 transeq ORFS_MC5.fa ORFS_MC5.aa #making the aa files
-
 ```
 
 A BLASTP search was done against SwissProt darabase.
@@ -92,15 +109,12 @@ A BLASTP search was done against SwissProt darabase.
 #moving all to a new directory
 mkdir gene_predicition
 mv ORFS/*.aa gene_prediction/ #moving all files with ending .aa
-
 #in the gene_prediction directory
 conda activate gene_prediction
 wget https://ftp.uniprot.org/pub/databases/uniprot/current_release/knowledgebase/complete/uniprot_sprot.fasta.gz
 gunzip uniprot_sprot.fasta.gz
-
 makeblastdb -in uniprot_sprot.fasta -dbtype prot -out uniprot_database
-
-#then i run the blast p for each file.. 
+#then i run the blast p for each file..
 blastp -query ORFS_MC5.aa -db uniprot_database -outfmt 7 -out blastp_MC5
 ```
 
@@ -110,7 +124,6 @@ The genes found in all samples were then counted.
 grep -oP '(?<=\|)[^\|]+' blastp_S323 |awk 'NR % 2 == 1' > S323_all_prot
 # awk 'NR % 2 == 1' prints all uneven lines  
 #do for all files
-
 cat MC5_all_prot MI5_all_prot MO1_all_prot S323_all_prot > all_prot
 sort -u all_prot | wc -l # --> 290122 genes
 ```
@@ -118,15 +131,11 @@ sort -u all_prot | wc -l # --> 290122 genes
 The files were then filtered using a cutoff for the e-value of 0.00001, only the genes annotated to Mytilus edulis species were choosen and the gene count for each sample was counted.
 
 ```{bash}
-# e-value cutoff set to e^-5 and code for species = MYTED 
+# e-value cutoff set to e^-5 and code for species = MYTED
 grep "^[^#;]" blastp_MC5 | awk '$11 <= 0.00001 {print$0}' | awk '/MYTED/ {print}' > filtered_blastp_MC5
-
 grep "^[^#;]" blastp_MO1 | awk '$11 <= 0.00001 {print$0}' | awk '/MYTED/ {print}' > filtered_blastp_MO1
-
 grep "^[^#;]" blastp_MI5 | awk '$11 <= 0.00001 {print$0}' | awk '/MYTED/ {print}' > filtered_blastp_MI5
-
 grep "^[^#;]" blastp_S323 | awk '$11 <= 0.00001 {print$0}' | awk '/MYTED/ {print}' > filtered_blastp_S323
-
 grep "^[^#;]" blastp_S221 | awk '$11 <= 0.00001 {print$0}' | awk '/MYTED/ {print}' > filtered_blastp_S221
 ```
 
@@ -134,13 +143,10 @@ grep "^[^#;]" blastp_S221 | awk '$11 <= 0.00001 {print$0}' | awk '/MYTED/ {print
 #protein names extraction
 grep -oP '(?<=\|)[^\|]+' filtered_blastp_MC5 |awk 'NR % 2 == 1' > onlyprot_MC5
 wc -l onlyprot_MC5 # --> 5771
-
 grep -oP '(?<=\|)[^\|]+' filtered_blastp_MI5 |awk 'NR % 2 == 1' > onlyprot_MI5
 wc -l onlyprot_MI5 # --> 13209
-
 grep -oP '(?<=\|)[^\|]+' filtered_blastp_MO1 |awk 'NR % 2 == 1' > onlyprot_MO1
 wc -l onlyprot_MO1 # --> 1562
-
 grep -oP '(?<=\|)[^\|]+' filtered_blastp_S323 |awk 'NR % 2 == 1' > onlyprot_S323
 wc -l onlyprot_S323 # --> 3386
 ```
@@ -157,4 +163,4 @@ Further, since all bioanalytical analyses was made by a company, the details abo
 
 In the original study 402 060 unigenes were found and our, somewhat improvised, corresponding number was calculated to 290 122. This number was obtained from the blast search with all genes in the whole SwissProt database containing a large amount of different species. This number is therefore not realistic, since the blue mussel most likely not expresses genes from other species. Further, the 402 060 unigenes the original paper claim to have found is also not a realistic number. Given that the human genome consists of approximately 25 000 to 30 000 genes, we find it highly unlikely that the blue mussel has over 400 000 genes.
 
-The blast search was also filtered to obtain only the genes with sufficient e-value and also only the genes coupled to Mytilus edulis species. The number of genes obtained for each sample can be found in Supplementary information. We observe a great variance between the samples, and ... is likely because this sample had more reads and therefore more possible hits and no conclusions can be drawn about these single samples from each condition. The number of genes of 2000-13000 genes, seems like a more reasonable number of genes compared to the 400 000 unigenes found in the original article.
+The blast search was also filtered to obtain only the genes with sufficient e-value and also only the genes coupled to Mytilus edulis species. The number of genes obtained for each sample can be found in Supplementary information. We observe a great variance between the samples, especially for MI5, and this is likely because this sample had more reads and therefore more possible hits. No conclusions can be drawn from these single samples from each condition, however, the number of genes of 2000-13000 genes, seems like a more reasonable number of genes compared to the 400 000 unigenes found in the original article.
